@@ -90,15 +90,25 @@ form.addEventListener('submit', async (event) => {
     log('Phase 1: Crawling pages and extracting links...');
     updateProgress(10, 'crawl', 'active', `Crawling ${uniquePages.length} pages...`);
     
-    const pageLinksMap = new Map(); // pageUrl -> Set of link URLs
-    const allLinks = new Set(); // All unique links across all pages
+    const pageLinksMap = new Map(); // pageUrl -> Map of link URLs to link text
+    const allLinksText = new Map(); // All unique link URLs -> combined link text
     
     for (let i = 0; i < uniquePages.length; i++) {
       const pageUrl = uniquePages[i];
-      const links = await crawlPageForLinks(pageUrl);
-      if (links) {
-        pageLinksMap.set(pageUrl, new Set(links));
-        links.forEach(link => allLinks.add(link));
+      const linksMap = await crawlPageForLinks(pageUrl);
+      if (linksMap) {
+        pageLinksMap.set(pageUrl, linksMap);
+        // Merge link text from different pages
+        for (const [url, text] of linksMap.entries()) {
+          if (allLinksText.has(url)) {
+            const existingText = allLinksText.get(url);
+            if (existingText !== text && !existingText.includes(text)) {
+              allLinksText.set(url, `${existingText} | ${text}`);
+            }
+          } else {
+            allLinksText.set(url, text);
+          }
+        }
       }
       const progress = 10 + Math.floor((i + 1) / uniquePages.length * 30);
       updateProgress(progress, 'crawl', 'active', `Crawled ${i + 1}/${uniquePages.length} pages`);
@@ -110,18 +120,20 @@ form.addEventListener('submit', async (event) => {
     }
     
     updateProgress(40, 'crawl', 'completed', `✓ Crawled ${pageLinksMap.size} pages`);
-    log(`Extracted ${allLinks.size} unique link${allLinks.size === 1 ? '' : 's'} from ${pageLinksMap.size} page${pageLinksMap.size === 1 ? '' : 's'}.`);
+    log(`Extracted ${allLinksText.size} unique link${allLinksText.size === 1 ? '' : 's'} from ${pageLinksMap.size} page${pageLinksMap.size === 1 ? '' : 's'}.`);
     
     // Phase 3: Check all unique links
     log('Phase 2: Checking all unique links...');
-    updateProgress(40, 'check', 'active', `Checking ${allLinks.size} unique links...`);
+    updateProgress(40, 'check', 'active', `Checking ${allLinksText.size} unique links...`);
     
-    const linkStatusMap = new Map(); // linkUrl -> status result
-    const uniqueLinksArray = [...allLinks];
+    const linkStatusMap = new Map(); // linkUrl -> status result with text
+    const uniqueLinksArray = [...allLinksText.keys()];
     
     for (let i = 0; i < uniqueLinksArray.length; i++) {
       const link = uniqueLinksArray[i];
       const result = await checkLink(link);
+      // Add link text to the result
+      result.text = allLinksText.get(link);
       linkStatusMap.set(link, result);
       const progress = 40 + Math.floor((i + 1) / uniqueLinksArray.length * 50);
       updateProgress(progress, 'check', 'active', `Checked ${i + 1}/${uniqueLinksArray.length} links`);
@@ -132,17 +144,17 @@ form.addEventListener('submit', async (event) => {
       }
     }
     
-    updateProgress(90, 'check', 'completed', `✓ Checked ${allLinks.size} links`);
+    updateProgress(90, 'check', 'completed', `✓ Checked ${allLinksText.size} links`);
     
     // Phase 4: Build results structure
     log('Phase 3: Building results...');
     updateProgress(90, 'build', 'active', 'Building results...');
     
     const pages = [];
-    for (const [pageUrl, pageLinks] of pageLinksMap.entries()) {
+    for (const [pageUrl, linksMap] of pageLinksMap.entries()) {
       const linkResults = [];
-      for (const link of pageLinks) {
-        const status = linkStatusMap.get(link);
+      for (const [linkUrl, linkText] of linksMap.entries()) {
+        const status = linkStatusMap.get(linkUrl);
         if (status) {
           linkResults.push(status);
         }
@@ -156,7 +168,7 @@ form.addEventListener('submit', async (event) => {
     updateProgress(100, 'build', 'completed', '✓ Complete');
     currentResults = pages;
     
-    renderSummary(pages, allLinks.size);
+    renderSummary(pages, allLinksText.size);
     renderResults(pages);
     log('Scan complete.');
     
@@ -268,30 +280,50 @@ function exportToJSON() {
     return;
   }
   
-  const data = {
-    exportDate: new Date().toISOString(),
-    summary: {
-      pagesScanned: currentResults.length,
-      totalLinks: currentResults.reduce((sum, page) => sum + page.links.length, 0),
-      brokenLinks: currentResults.reduce((sum, page) => 
-        sum + page.links.filter(link => !link.ok).length, 0
-      ),
-    },
-    results: currentResults,
-  };
+  // Build CSV
+  const rows = [];
   
-  const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
+  // Header row
+  rows.push(['Page URL', 'Link Text', 'Link URL', 'Status', 'Status Code', 'Message']);
+  
+  // Data rows
+  for (const page of currentResults) {
+    for (const link of page.links) {
+      rows.push([
+        escapeCsvValue(page.page),
+        escapeCsvValue(link.text || ''),
+        escapeCsvValue(link.href),
+        link.ok ? 'OK' : 'Broken',
+        link.status !== null ? link.status : 'N/A',
+        escapeCsvValue(link.message || ''),
+      ]);
+    }
+  }
+  
+  // Convert to CSV string
+  const csv = rows.map(row => row.join(',')).join('\n');
+  
+  // Download
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `broken-links-${new Date().toISOString().split('T')[0]}.json`;
+  a.download = `broken-links-${new Date().toISOString().split('T')[0]}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   
-  log('Results exported to JSON file.');
+  log('Results exported to CSV file.');
+}
+
+function escapeCsvValue(value) {
+  // Escape double quotes and wrap in quotes if contains comma, newline, or quote
+  const stringValue = String(value);
+  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
 }
 
 function log(message, level = 'info') {
@@ -374,10 +406,10 @@ async function crawlPageForLinks(pageUrl) {
     }
 
     const html = response.body || '';
-    const links = extractLinks(html, pageUrl);
-    log(`Found ${links.length} link${links.length === 1 ? '' : 's'} on ${pageUrl}.`);
+    const linksMap = extractLinks(html, pageUrl);
+    log(`Found ${linksMap.size} link${linksMap.size === 1 ? '' : 's'} on ${pageUrl}.`);
 
-    return links;
+    return linksMap;
   } catch (error) {
     log(`Failed to fetch page ${pageUrl}: ${error.message}`, 'error');
     return null;
@@ -504,7 +536,7 @@ function extractLinks(html, baseUrl) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const anchors = Array.from(doc.querySelectorAll('a[href]'));
-  const links = new Set();
+  const linksMap = new Map(); // Map of URL -> link text
 
   for (const anchor of anchors) {
     const rawHref = anchor.getAttribute('href')?.trim();
@@ -516,13 +548,25 @@ function extractLinks(html, baseUrl) {
       if (!['http:', 'https:'].includes(absolute.protocol)) {
         continue;
       }
-      links.add(absolute.href);
+      
+      // Extract link text, fallback to URL if empty
+      const linkText = (anchor.textContent || '').trim() || anchor.getAttribute('aria-label') || absolute.href;
+      
+      // If we already have this URL, append the text if different
+      if (linksMap.has(absolute.href)) {
+        const existingText = linksMap.get(absolute.href);
+        if (existingText !== linkText && !existingText.includes(linkText)) {
+          linksMap.set(absolute.href, `${existingText} | ${linkText}`);
+        }
+      } else {
+        linksMap.set(absolute.href, linkText);
+      }
     } catch (error) {
       log(`Failed to resolve link ${rawHref} on ${baseUrl}: ${error.message}`, 'warn');
     }
   }
 
-  return [...links];
+  return linksMap;
 }
 
 function normalizeUrl(candidate, base) {
@@ -584,7 +628,8 @@ function renderResults(pages) {
     table.innerHTML = `
       <thead>
         <tr>
-          <th>Link</th>
+          <th>Link Text</th>
+          <th>URL</th>
           <th>Status</th>
           <th>Message</th>
         </tr>
@@ -595,6 +640,10 @@ function renderResults(pages) {
     for (const linkResult of page.links) {
       const row = document.createElement('tr');
       row.className = linkResult.ok ? 'ok' : 'broken';
+
+      const textCell = document.createElement('td');
+      textCell.textContent = linkResult.text || linkResult.href;
+      textCell.style.maxWidth = '200px';
 
       const linkCell = document.createElement('td');
       const linkAnchor = document.createElement('a');
@@ -613,7 +662,7 @@ function renderResults(pages) {
       const messageCell = document.createElement('td');
       messageCell.textContent = linkResult.message || '';
 
-      row.append(linkCell, statusCell, messageCell);
+      row.append(textCell, linkCell, statusCell, messageCell);
       tbody.append(row);
     }
 
