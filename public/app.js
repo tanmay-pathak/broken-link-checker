@@ -45,23 +45,62 @@ form.addEventListener('submit', async (event) => {
 
   try {
     log(`Starting scan for ${sitemapUrl.href}`);
+    
+    // Phase 1: Collect all page URLs from sitemap
     const pageUrls = await collectSitemapUrls(sitemapUrl.href);
     if (!pageUrls.length) {
       log('No page URLs were discovered in the sitemap. Nothing to scan.', 'warn');
       return;
     }
-
     log(`Discovered ${pageUrls.length} page URL${pageUrls.length === 1 ? '' : 's'}.`);
 
     const uniquePages = [...new Set(pageUrls)];
-    const pages = [];
-
+    
+    // Phase 2: Crawl all pages and extract links
+    log('Phase 1: Crawling pages and extracting links...');
+    const pageLinksMap = new Map(); // pageUrl -> Set of link URLs
+    const allLinks = new Set(); // All unique links across all pages
+    
     for (const pageUrl of uniquePages) {
-      const result = await scanPage(pageUrl);
-      pages.push(result);
+      const links = await crawlPageForLinks(pageUrl);
+      if (links) {
+        pageLinksMap.set(pageUrl, new Set(links));
+        links.forEach(link => allLinks.add(link));
+      }
+    }
+    
+    log(`Extracted ${allLinks.size} unique link${allLinks.size === 1 ? '' : 's'} from ${pageLinksMap.size} page${pageLinksMap.size === 1 ? '' : 's'}.`);
+    
+    // Phase 3: Check all unique links
+    log('Phase 2: Checking all unique links...');
+    const linkStatusMap = new Map(); // linkUrl -> status result
+    const uniqueLinksArray = [...allLinks];
+    
+    for (let i = 0; i < uniqueLinksArray.length; i++) {
+      const link = uniqueLinksArray[i];
+      log(`Checking link ${i + 1}/${uniqueLinksArray.length}: ${link}`);
+      const result = await checkLink(link);
+      linkStatusMap.set(link, result);
+    }
+    
+    // Phase 4: Build results structure
+    log('Phase 3: Building results...');
+    const pages = [];
+    for (const [pageUrl, pageLinks] of pageLinksMap.entries()) {
+      const linkResults = [];
+      for (const link of pageLinks) {
+        const status = linkStatusMap.get(link);
+        if (status) {
+          linkResults.push(status);
+        }
+      }
+      pages.push({
+        page: pageUrl,
+        links: linkResults,
+      });
     }
 
-    renderSummary(pages);
+    renderSummary(pages, allLinks.size);
     renderResults(pages);
     log('Scan complete.');
   } catch (error) {
@@ -151,52 +190,23 @@ async function collectSitemapUrls(sitemapUrl, visited = new Set()) {
   return urls;
 }
 
-async function scanPage(pageUrl) {
-  log(`Fetching page ${pageUrl}`);
+async function crawlPageForLinks(pageUrl) {
+  log(`Crawling page ${pageUrl}`);
   try {
     const response = await safeFetch(pageUrl);
     if (!response.ok) {
       log(`Page returned ${response.status} ${response.statusText || ''}: ${pageUrl}`, 'warn');
-      return {
-        page: pageUrl,
-        links: [
-          {
-            href: pageUrl,
-            ok: false,
-            status: response.status,
-            message: response.statusText || `HTTP ${response.status}`,
-          },
-        ],
-      };
+      return null;
     }
 
     const html = response.body || '';
     const links = extractLinks(html, pageUrl);
     log(`Found ${links.length} link${links.length === 1 ? '' : 's'} on ${pageUrl}.`);
 
-    const results = [];
-    for (const link of links) {
-      const linkResult = await checkLink(link);
-      results.push(linkResult);
-    }
-
-    return {
-      page: pageUrl,
-      links: results,
-    };
+    return links;
   } catch (error) {
     log(`Failed to fetch page ${pageUrl}: ${error.message}`, 'error');
-    return {
-      page: pageUrl,
-      links: [
-        {
-          href: pageUrl,
-          ok: false,
-          status: null,
-          message: simplifyError(error.message),
-        },
-      ],
-    };
+    return null;
   }
 }
 
@@ -334,20 +344,18 @@ function normalizeUrl(candidate, base) {
   }
 }
 
-function renderSummary(pages) {
+function renderSummary(pages, uniqueLinksCount) {
   const pageCount = pages.length;
-  let totalLinks = 0;
-  let brokenLinks = 0;
+  const brokenLinksSet = new Set();
 
   for (const page of pages) {
-    totalLinks += page.links.length;
-    brokenLinks += page.links.filter((link) => !link.ok).length;
+    page.links.filter((link) => !link.ok).forEach(link => brokenLinksSet.add(link.href));
   }
 
   const summaryItems = [
     { label: 'Pages Scanned', value: pageCount },
-    { label: 'Links Checked', value: totalLinks },
-    { label: 'Broken Links', value: brokenLinks },
+    { label: 'Unique Links Checked', value: uniqueLinksCount },
+    { label: 'Broken Links', value: brokenLinksSet.size },
   ];
 
   summaryEl.innerHTML = summaryItems
