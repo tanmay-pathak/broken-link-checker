@@ -67,7 +67,8 @@ app.get('/proxy', async (req, res) => {
       try {
         buffer = gunzipSync(buffer);
       } catch (error) {
-        console.warn(`Failed to decompress gzip content for ${parsed.href}: ${error.message}`);
+        // Content wasn't actually gzipped despite header - use as-is
+        // This is common with misconfigured servers
       }
     }
 
