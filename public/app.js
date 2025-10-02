@@ -1,17 +1,40 @@
 const form = document.getElementById('sitemap-form');
 const input = document.getElementById('sitemapUrl');
 const scanButton = document.getElementById('scanButton');
+const buttonText = scanButton.querySelector('.button-text');
 const logPanel = document.getElementById('log-panel');
 const logEl = document.getElementById('log');
 const clearLogButton = document.getElementById('clear-log');
+const progressPanel = document.getElementById('progress-panel');
+const progressBarFill = document.getElementById('progress-bar-fill');
 const summaryPanel = document.getElementById('summary-panel');
 const summaryEl = document.getElementById('summary');
 const resultsPanel = document.getElementById('results-panel');
 const resultsEl = document.getElementById('results');
+const searchInput = document.getElementById('search-results');
+const exportButton = document.getElementById('export-results');
+const filterButton = document.getElementById('filter-broken');
+
+let currentResults = [];
+let showBrokenOnly = false;
 
 clearLogButton.addEventListener('click', () => {
   logEl.textContent = '';
   logPanel.hidden = true;
+});
+
+searchInput?.addEventListener('input', (e) => {
+  filterResults(e.target.value);
+});
+
+exportButton?.addEventListener('click', () => {
+  exportToJSON();
+});
+
+filterButton?.addEventListener('click', () => {
+  showBrokenOnly = !showBrokenOnly;
+  filterButton.textContent = showBrokenOnly ? '✓ Show All' : 'Show Broken Only';
+  filterResults(searchInput?.value || '');
 });
 
 form.addEventListener('submit', async (event) => {
@@ -41,7 +64,9 @@ form.addEventListener('submit', async (event) => {
   }
 
   scanButton.disabled = true;
-  scanButton.textContent = 'Scanning…';
+  buttonText.textContent = 'Scanning…';
+  progressPanel.hidden = false;
+  updateProgress(0, 'crawl', 'active', 'Collecting sitemap...');
 
   try {
     log(`Starting scan for ${sitemapUrl.href}`);
@@ -58,33 +83,46 @@ form.addEventListener('submit', async (event) => {
     
     // Phase 2: Crawl all pages and extract links
     log('Phase 1: Crawling pages and extracting links...');
+    updateProgress(10, 'crawl', 'active', `Crawling ${uniquePages.length} pages...`);
+    
     const pageLinksMap = new Map(); // pageUrl -> Set of link URLs
     const allLinks = new Set(); // All unique links across all pages
     
-    for (const pageUrl of uniquePages) {
+    for (let i = 0; i < uniquePages.length; i++) {
+      const pageUrl = uniquePages[i];
       const links = await crawlPageForLinks(pageUrl);
       if (links) {
         pageLinksMap.set(pageUrl, new Set(links));
         links.forEach(link => allLinks.add(link));
       }
+      const progress = 10 + Math.floor((i + 1) / uniquePages.length * 30);
+      updateProgress(progress, 'crawl', 'active', `Crawled ${i + 1}/${uniquePages.length} pages`);
     }
     
+    updateProgress(40, 'crawl', 'completed', `✓ Crawled ${pageLinksMap.size} pages`);
     log(`Extracted ${allLinks.size} unique link${allLinks.size === 1 ? '' : 's'} from ${pageLinksMap.size} page${pageLinksMap.size === 1 ? '' : 's'}.`);
     
     // Phase 3: Check all unique links
     log('Phase 2: Checking all unique links...');
+    updateProgress(40, 'check', 'active', `Checking ${allLinks.size} unique links...`);
+    
     const linkStatusMap = new Map(); // linkUrl -> status result
     const uniqueLinksArray = [...allLinks];
     
     for (let i = 0; i < uniqueLinksArray.length; i++) {
       const link = uniqueLinksArray[i];
-      log(`Checking link ${i + 1}/${uniqueLinksArray.length}: ${link}`);
       const result = await checkLink(link);
       linkStatusMap.set(link, result);
+      const progress = 40 + Math.floor((i + 1) / uniqueLinksArray.length * 50);
+      updateProgress(progress, 'check', 'active', `Checked ${i + 1}/${uniqueLinksArray.length} links`);
     }
+    
+    updateProgress(90, 'check', 'completed', `✓ Checked ${allLinks.size} links`);
     
     // Phase 4: Build results structure
     log('Phase 3: Building results...');
+    updateProgress(90, 'build', 'active', 'Building results...');
+    
     const pages = [];
     for (const [pageUrl, pageLinks] of pageLinksMap.entries()) {
       const linkResults = [];
@@ -100,24 +138,145 @@ form.addEventListener('submit', async (event) => {
       });
     }
 
+    updateProgress(100, 'build', 'completed', '✓ Complete');
+    currentResults = pages;
+    
     renderSummary(pages, allLinks.size);
     renderResults(pages);
     log('Scan complete.');
+    
+    // Hide progress after 2 seconds
+    setTimeout(() => {
+      progressPanel.hidden = true;
+      resetProgress();
+    }, 2000);
   } catch (error) {
     log(error.message || 'Scan failed.', 'error');
+    progressPanel.hidden = true;
+    resetProgress();
   } finally {
     scanButton.disabled = false;
-    scanButton.textContent = 'Scan';
+    buttonText.textContent = 'Start Scan';
   }
 });
 
 function resetUI() {
   summaryPanel.hidden = true;
   resultsPanel.hidden = true;
+  progressPanel.hidden = true;
   summaryEl.innerHTML = '';
   resultsEl.innerHTML = '';
   logEl.textContent = '';
   logPanel.hidden = true;
+  currentResults = [];
+  showBrokenOnly = false;
+  if (searchInput) searchInput.value = '';
+  if (filterButton) filterButton.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M6 10.5a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z"/>
+    </svg>
+    Show Broken Only
+  `;
+  resetProgress();
+}
+
+function updateProgress(percentage, step, status, message) {
+  progressBarFill.style.width = `${percentage}%`;
+  
+  const steps = ['crawl', 'check', 'build'];
+  steps.forEach(s => {
+    const el = document.getElementById(`step-${s}`);
+    if (!el) return;
+    
+    el.classList.remove('active', 'completed');
+    
+    if (s === step) {
+      el.classList.add(status);
+      const statusEl = el.querySelector('.step-status');
+      if (statusEl) statusEl.textContent = message;
+    } else {
+      const stepIndex = steps.indexOf(s);
+      const currentIndex = steps.indexOf(step);
+      if (stepIndex < currentIndex || (stepIndex === currentIndex && status === 'completed')) {
+        el.classList.add('completed');
+        const statusEl = el.querySelector('.step-status');
+        if (statusEl && !statusEl.textContent.startsWith('✓')) {
+          // Keep the existing message if already has a checkmark
+        }
+      }
+    }
+  });
+}
+
+function resetProgress() {
+  progressBarFill.style.width = '0%';
+  ['crawl', 'check', 'build'].forEach(step => {
+    const el = document.getElementById(`step-${step}`);
+    if (!el) return;
+    el.classList.remove('active', 'completed');
+    const statusEl = el.querySelector('.step-status');
+    if (statusEl) statusEl.textContent = '—';
+  });
+}
+
+function filterResults(searchTerm = '') {
+  const sections = resultsEl.querySelectorAll('section');
+  const term = searchTerm.toLowerCase();
+  
+  sections.forEach(section => {
+    const pageUrl = section.querySelector('h3 a')?.textContent || '';
+    const rows = section.querySelectorAll('tbody tr');
+    let visibleRows = 0;
+    
+    rows.forEach(row => {
+      const linkUrl = row.querySelector('td:first-child a')?.textContent || '';
+      const isBroken = row.classList.contains('broken');
+      
+      const matchesSearch = !term || pageUrl.toLowerCase().includes(term) || linkUrl.toLowerCase().includes(term);
+      const matchesFilter = !showBrokenOnly || isBroken;
+      
+      if (matchesSearch && matchesFilter) {
+        row.style.display = '';
+        visibleRows++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+    
+    section.style.display = visibleRows > 0 ? '' : 'none';
+  });
+}
+
+function exportToJSON() {
+  if (!currentResults.length) {
+    alert('No results to export. Please run a scan first.');
+    return;
+  }
+  
+  const data = {
+    exportDate: new Date().toISOString(),
+    summary: {
+      pagesScanned: currentResults.length,
+      totalLinks: currentResults.reduce((sum, page) => sum + page.links.length, 0),
+      brokenLinks: currentResults.reduce((sum, page) => 
+        sum + page.links.filter(link => !link.ok).length, 0
+      ),
+    },
+    results: currentResults,
+  };
+  
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `broken-links-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  log('Results exported to JSON file.');
 }
 
 function log(message, level = 'info') {

@@ -9,8 +9,21 @@
   <body>
     <main class="container">
       <header>
+        <div class="logo">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="48" height="48" rx="12" fill="url(#gradient)"/>
+            <path d="M18 24L22 28L30 20" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 16C14 14.8954 14.8954 14 16 14H32C33.1046 14 34 14.8954 34 16V18H14V16Z" fill="white" fill-opacity="0.3"/>
+            <defs>
+              <linearGradient id="gradient" x1="0" y1="0" x2="48" y2="48">
+                <stop stop-color="#2563eb"/>
+                <stop offset="1" stop-color="#7c3aed"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
         <h1>Broken Link Checker</h1>
-        <p class="lead">All checks run directly in your browser. Share the log with others if you spot issues.</p>
+        <p class="lead">Fast, efficient link validation powered by your browser. Crawl, dedupe, and check—all locally.</p>
       </header>
 
       <form id="sitemap-form" class="panel" novalidate>
@@ -22,28 +35,100 @@
             name="sitemapUrl"
             placeholder="https://example.com/sitemap.xml"
             required
+            autocomplete="url"
           />
-          <button type="submit" id="scanButton">Scan</button>
+          <button type="submit" id="scanButton">
+            <span class="button-content">
+              <svg class="button-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M8 12L12 8M12 12L8 8M19 10C19 14.9706 14.9706 19 10 19C5.02944 19 1 14.9706 1 10C1 5.02944 5.02944 1 10 1C14.9706 1 19 5.02944 19 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span class="button-text">Start Scan</span>
+            </span>
+          </button>
         </div>
-        <p class="help">Heads up: remote sites must allow cross-origin requests or the browser will report a fetch error.</p>
+        <p class="help">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -0.2em;">
+            <path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2a1 1 0 11-2 0V6a1 1 0 011-1zm0 6a1 1 0 100 2 1 1 0 000-2z"/>
+          </svg>
+          Remote sites must allow cross-origin requests. Server-side proxy available for restricted sites.
+        </p>
       </form>
 
-      <section class="panel" id="log-panel" hidden>
-        <div class="panel-header">
-          <h2>Log</h2>
-          <button type="button" id="clear-log" class="secondary">Clear</button>
+      <section class="panel progress-panel" id="progress-panel" hidden>
+        <h2>Progress</h2>
+        <div class="progress-steps">
+          <div class="progress-step" id="step-crawl">
+            <div class="step-icon">1</div>
+            <div class="step-content">
+              <div class="step-title">Crawling Pages</div>
+              <div class="step-status">—</div>
+            </div>
+          </div>
+          <div class="progress-step" id="step-check">
+            <div class="step-icon">2</div>
+            <div class="step-content">
+              <div class="step-title">Checking Links</div>
+              <div class="step-status">—</div>
+            </div>
+          </div>
+          <div class="progress-step" id="step-build">
+            <div class="step-icon">3</div>
+            <div class="step-content">
+              <div class="step-title">Building Results</div>
+              <div class="step-status">—</div>
+            </div>
+          </div>
         </div>
-        <pre id="log"></pre>
+        <div class="progress-bar">
+          <div class="progress-bar-fill" id="progress-bar-fill"></div>
+        </div>
       </section>
 
       <section class="panel" id="summary-panel" hidden>
         <h2>Summary</h2>
         <div class="summary" id="summary"></div>
+        <div class="action-buttons">
+          <button type="button" id="export-results" class="secondary">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 1a.5.5 0 01.5.5v9.793l2.146-2.147a.5.5 0 01.708.708l-3 3a.5.5 0 01-.708 0l-3-3a.5.5 0 11.708-.708L7.5 11.293V1.5A.5.5 0 018 1z"/>
+              <path d="M2 13a1 1 0 001 1h10a1 1 0 001-1V9.5a.5.5 0 011 0V13a2 2 0 01-2 2H3a2 2 0 01-2-2V9.5a.5.5 0 011 0V13z"/>
+            </svg>
+            Export JSON
+          </button>
+          <button type="button" id="filter-broken" class="secondary">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M6 10.5a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z"/>
+            </svg>
+            Show Broken Only
+          </button>
+        </div>
       </section>
 
       <section class="panel" id="results-panel" hidden>
-        <h2>Results</h2>
+        <div class="panel-header">
+          <h2>Results</h2>
+          <div class="search-box">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/>
+            </svg>
+            <input type="search" id="search-results" placeholder="Search links..." />
+          </div>
+        </div>
         <div id="results"></div>
+      </section>
+
+      <section class="panel log-panel" id="log-panel" hidden>
+        <div class="panel-header">
+          <h2>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" style="vertical-align: -0.25em;">
+              <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z"/>
+              <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z"/>
+            </svg>
+            Activity Log
+          </h2>
+          <button type="button" id="clear-log" class="secondary">Clear</button>
+        </div>
+        <pre id="log"></pre>
       </section>
     </main>
     <script src="/app.js" type="module"></script>
