@@ -92,13 +92,32 @@ app.use((req, res) => {
 });
 
 function buildForwardHeaders(req) {
+  // Use a realistic browser user agent to avoid bot detection
+  const userAgents = [
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0',
+  ];
+  
   const headers = {
-    'user-agent': req.get('user-agent') || 'BrokenLinkChecker/1.0',
+    'user-agent': req.get('user-agent') || userAgents[Math.floor(Math.random() * userAgents.length)],
+    'accept-language': 'en-US,en;q=0.9',
+    'accept-encoding': 'gzip, deflate, br',
+    'dnt': '1',
+    'upgrade-insecure-requests': '1',
+    'sec-fetch-dest': 'document',
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-site': 'none',
+    'sec-fetch-user': '?1',
+    'cache-control': 'max-age=0',
   };
 
   const accept = req.get('accept');
   if (accept) {
     headers.accept = accept;
+  } else {
+    headers.accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8';
   }
 
   const referer = req.get('referer');

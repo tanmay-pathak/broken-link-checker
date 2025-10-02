@@ -18,6 +18,11 @@ const filterButton = document.getElementById('filter-broken');
 let currentResults = [];
 let showBrokenOnly = false;
 
+// Helper function to add delays between requests
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 clearLogButton.addEventListener('click', () => {
   logEl.textContent = '';
   logPanel.hidden = true;
@@ -97,6 +102,11 @@ form.addEventListener('submit', async (event) => {
       }
       const progress = 10 + Math.floor((i + 1) / uniquePages.length * 30);
       updateProgress(progress, 'crawl', 'active', `Crawled ${i + 1}/${uniquePages.length} pages`);
+      
+      // Add small delay between page crawls to appear more human-like
+      if (i < uniquePages.length - 1) {
+        await sleep(100 + Math.random() * 200); // 100-300ms delay
+      }
     }
     
     updateProgress(40, 'crawl', 'completed', `✓ Crawled ${pageLinksMap.size} pages`);
@@ -115,6 +125,11 @@ form.addEventListener('submit', async (event) => {
       linkStatusMap.set(link, result);
       const progress = 40 + Math.floor((i + 1) / uniqueLinksArray.length * 50);
       updateProgress(progress, 'check', 'active', `Checked ${i + 1}/${uniqueLinksArray.length} links`);
+      
+      // Add small delay between link checks to avoid rate limiting
+      if (i < uniqueLinksArray.length - 1) {
+        await sleep(50 + Math.random() * 100); // 50-150ms delay
+      }
     }
     
     updateProgress(90, 'check', 'completed', `✓ Checked ${allLinks.size} links`);
@@ -369,7 +384,9 @@ async function crawlPageForLinks(pageUrl) {
   }
 }
 
-async function checkLink(linkUrl) {
+async function checkLink(linkUrl, retryCount = 0) {
+  const maxRetries = 2;
+  
   try {
     const headResponse = await safeFetch(linkUrl, { method: 'HEAD' });
     if (headResponse.ok) {
@@ -381,8 +398,17 @@ async function checkLink(linkUrl) {
       };
     }
 
+    // Retry on rate limiting or temporary errors
+    if (retryCount < maxRetries && [429, 503, 504].includes(headResponse.status)) {
+      const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff
+      log(`Rate limited (${headResponse.status}). Retrying in ${delay}ms for ${linkUrl}...`, 'warn');
+      await sleep(delay);
+      return checkLink(linkUrl, retryCount + 1);
+    }
+
     if ([403, 405].includes(headResponse.status)) {
       log(`HEAD request blocked (${headResponse.status}). Retrying with GET for ${linkUrl}.`, 'warn');
+      await sleep(200); // Small delay before GET
       const getResponse = await safeFetch(linkUrl, { method: 'GET' });
       return {
         href: linkUrl,
@@ -401,6 +427,14 @@ async function checkLink(linkUrl) {
       message: headResponse.statusText || `HTTP ${headResponse.status}`,
     };
   } catch (error) {
+    // Retry on network errors
+    if (retryCount < maxRetries && error.message.includes('fetch')) {
+      const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+      log(`Network error. Retrying in ${delay}ms for ${linkUrl}...`, 'warn');
+      await sleep(delay);
+      return checkLink(linkUrl, retryCount + 1);
+    }
+    
     return {
       href: linkUrl,
       ok: false,
