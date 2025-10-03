@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Broken Link Checker</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>Broken Link Checker</h1>
+        <p class="lead">All checks run directly in your browser. Share the log with others if you spot issues.</p>
+      </header>
+
+      <form id="sitemap-form" class="panel" novalidate>
+        <label for="sitemapUrl">Sitemap URL</label>
+        <div class="form-row">
+          <input
+            type="url"
+            id="sitemapUrl"
+            name="sitemapUrl"
+            placeholder="https://example.com/sitemap.xml"
+            required
+          />
+          <button type="submit" id="scanButton">Scan</button>
+        </div>
+        <p class="help">Heads up: remote sites must allow cross-origin requests or the browser will report a fetch error.</p>
+      </form>
+
+      <section class="panel" id="log-panel" hidden>
+        <div class="panel-header">
+          <h2>Log</h2>
+          <button type="button" id="clear-log" class="secondary">Clear</button>
+        </div>
+        <pre id="log"></pre>
+      </section>
+
+      <section class="panel" id="summary-panel" hidden>
+        <h2>Summary</h2>
+        <div class="summary" id="summary"></div>
+      </section>
+
+      <section class="panel" id="results-panel" hidden>
+        <h2>Results</h2>
+        <div id="results"></div>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

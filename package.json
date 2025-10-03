@@ -1,0 +1,16 @@
+{
+  "name": "broken-link-checker",
+  "version": "1.0.0",
+  "description": "Simple sitemap-driven broken link checker web app",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
