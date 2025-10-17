@@ -14,6 +14,32 @@ const resultsEl = document.getElementById('results');
 const searchInput = document.getElementById('search-results');
 const exportButton = document.getElementById('export-results');
 const filterButton = document.getElementById('filter-broken');
+const statusBanner = document.getElementById('status-banner');
+const feedbackEl = document.getElementById('sitemap-feedback');
+const demoButton = document.getElementById('load-demo');
+const pasteButton = document.getElementById('paste-clipboard');
+const resultsEmptyState = document.getElementById('results-empty');
+const resultsEmptyTitle = document.getElementById('results-empty-title');
+const resultsEmptyMessage = document.getElementById('results-empty-message');
+const returnToFormButton = document.getElementById('return-to-form');
+
+const statusIcons = {
+  info: '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1.667a8.333 8.333 0 110 16.666 8.333 8.333 0 010-16.666zm0 4.166a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5zm1.042 9.167V9.583H9.375v1.667h.834v3.75h.833z"/></svg>',
+  success: '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1.667a8.333 8.333 0 110 16.666 8.333 8.333 0 010-16.666zm3.541 6.458l-4 4a.833.833 0 01-1.18.02l-1.833-1.75a.833.833 0 111.16-1.194l1.258 1.2 3.416-3.417a.833.833 0 111.179 1.141z"/></svg>',
+  warn: '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10.983 2.275l7.5 13.333A1.667 1.667 0 0116.983 18H3.017a1.667 1.667 0 01-1.5-2.392l7.5-13.333a1.667 1.667 0 012.966 0zM9.167 7.5v3.333a.833.833 0 101.666 0V7.5a.833.833 0 10-1.666 0zm.833 7.5a1.041 1.041 0 100-2.083 1.041 1.041 0 000 2.083z"/></svg>',
+  error: '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1.667a8.333 8.333 0 110 16.666 8.333 8.333 0 010-16.666zm2.357 5.31a.833.833 0 00-1.18 0L10 8.154 8.823 6.977a.833.833 0 00-1.18 1.178L8.82 9.333l-1.177 1.178a.833.833 0 001.178 1.18L10 10.513l1.178 1.178a.833.833 0 101.178-1.179L11.18 9.332l1.178-1.178a.833.833 0 000-1.178z"/></svg>',
+};
+
+const filterButtonIcons = {
+  filter: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6 10.5a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z"/></svg>',
+  all: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.75 8a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0V8zm4-4.5a.75.75 0 011.5 0v9a.75.75 0 01-1.5 0v-9zm4 2a.75.75 0 011.5 0v7a.75.75 0 01-1.5 0v-7zm4-3a.75.75 0 011.5 0v10a.75.75 0 01-1.5 0v-10z"/></svg>',
+};
+
+const defaultEmptyState = {
+  title: 'Ready when you are',
+  message: 'Run a scan to see link checks appear here.',
+  variant: 'info',
+};
 
 let currentResults = [];
 let showBrokenOnly = false;
@@ -23,7 +49,128 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-clearLogButton.addEventListener('click', () => {
+function setStatusBanner(message, variant = 'info') {
+  if (!statusBanner) return;
+  const icon = statusIcons[variant] || statusIcons.info;
+  statusBanner.dataset.variant = variant;
+  statusBanner.hidden = false;
+  statusBanner.innerHTML = '';
+
+  const iconWrapper = document.createElement('span');
+  iconWrapper.className = 'status-icon';
+  iconWrapper.innerHTML = icon;
+
+  const textWrapper = document.createElement('span');
+  textWrapper.className = 'status-text';
+  textWrapper.textContent = message;
+
+  statusBanner.append(iconWrapper, textWrapper);
+}
+
+function clearStatusBanner() {
+  if (!statusBanner) return;
+  statusBanner.hidden = true;
+  statusBanner.innerHTML = '';
+  delete statusBanner.dataset.variant;
+}
+
+function showFeedback(message, variant = 'info') {
+  if (!feedbackEl) return;
+  feedbackEl.textContent = message;
+  feedbackEl.dataset.variant = variant;
+  feedbackEl.hidden = false;
+  if (input) {
+    if (variant === 'error') {
+      input.setAttribute('aria-invalid', 'true');
+    } else {
+      input.removeAttribute('aria-invalid');
+    }
+  }
+}
+
+function clearFeedback() {
+  if (!feedbackEl) return;
+  feedbackEl.hidden = true;
+  feedbackEl.textContent = '';
+  delete feedbackEl.dataset.variant;
+  if (input) {
+    input.removeAttribute('aria-invalid');
+  }
+}
+
+function updateFilterButton() {
+  if (!filterButton) return;
+  const icon = showBrokenOnly ? filterButtonIcons.all : filterButtonIcons.filter;
+  const label = showBrokenOnly ? 'Show All Links' : 'Show Broken Only';
+  filterButton.innerHTML = `${icon} ${label}`;
+  filterButton.setAttribute('aria-pressed', String(showBrokenOnly));
+}
+
+function updateResultsEmptyState(title, message, variant = 'info', { show = true } = {}) {
+  if (!resultsEmptyState) return;
+  if (resultsEmptyTitle) {
+    resultsEmptyTitle.textContent = title;
+  }
+  if (resultsEmptyMessage) {
+    resultsEmptyMessage.textContent = message;
+  }
+  resultsEmptyState.dataset.variant = variant;
+  resultsEmptyState.hidden = !show;
+}
+
+function hideResultsEmptyState() {
+  if (!resultsEmptyState) return;
+  resultsEmptyState.hidden = true;
+}
+
+updateFilterButton();
+updateResultsEmptyState(defaultEmptyState.title, defaultEmptyState.message, defaultEmptyState.variant, { show: false });
+
+input?.addEventListener('input', () => {
+  if (feedbackEl && !feedbackEl.hidden && feedbackEl.dataset.variant === 'error') {
+    clearFeedback();
+  }
+});
+
+demoButton?.addEventListener('click', () => {
+  const sitemap = demoButton.dataset.sitemap;
+  if (!sitemap) return;
+  input.value = sitemap;
+  showFeedback('Loaded demo sitemap. Press “Start Scan” to try it out.', 'success');
+  setStatusBanner('Loaded the demo sitemap—ready when you are.', 'info');
+  input.focus({ preventScroll: true });
+});
+
+pasteButton?.addEventListener('click', async () => {
+  if (!navigator.clipboard?.readText) {
+    showFeedback('Clipboard access is not available in this browser.', 'warn');
+    setStatusBanner('Clipboard access is not available. Paste manually instead.', 'warn');
+    return;
+  }
+
+  try {
+    const text = (await navigator.clipboard.readText())?.trim();
+    if (!text) {
+      showFeedback('Your clipboard was empty. Copy a sitemap URL first.', 'warn');
+      return;
+    }
+    input.value = text;
+    showFeedback('Pasted sitemap URL from your clipboard.', 'success');
+    input.focus({ preventScroll: true });
+  } catch (error) {
+    showFeedback('We could not read from the clipboard. Paste manually instead.', 'warn');
+    setStatusBanner(error.message || 'Clipboard access was denied.', 'error');
+  }
+});
+
+returnToFormButton?.addEventListener('click', () => {
+  input.focus({ preventScroll: false });
+  if (typeof window !== 'undefined') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+});
+
+clearLogButton?.addEventListener('click', () => {
   logEl.textContent = '';
   logPanel.hidden = true;
 });
@@ -38,7 +185,13 @@ exportButton?.addEventListener('click', () => {
 
 filterButton?.addEventListener('click', () => {
   showBrokenOnly = !showBrokenOnly;
-  filterButton.textContent = showBrokenOnly ? '✓ Show All' : 'Show Broken Only';
+  updateFilterButton();
+  setStatusBanner(
+    showBrokenOnly
+      ? 'Showing broken links only. Toggle again to see everything.'
+      : 'Showing all scanned links.',
+    'info',
+  );
   filterResults(searchInput?.value || '');
 });
 
@@ -49,6 +202,8 @@ form.addEventListener('submit', async (event) => {
   resetUI();
 
   if (!sitemapValue) {
+    showFeedback('Please enter a sitemap URL to begin.', 'error');
+    setStatusBanner('We need a sitemap URL before starting.', 'warn');
     input.focus();
     return;
   }
@@ -57,13 +212,19 @@ form.addEventListener('submit', async (event) => {
   try {
     sitemapUrl = new URL(sitemapValue);
   } catch (error) {
-    log(`Invalid URL: ${error.message}`, 'error');
+    const message = `Invalid URL: ${error.message}`;
+    log(message, 'error');
+    showFeedback('That URL looks invalid. Double-check the format and try again.', 'error');
+    setStatusBanner(message, 'error');
     input.focus();
     return;
   }
 
   if (!['http:', 'https:'].includes(sitemapUrl.protocol)) {
-    log('Only HTTP and HTTPS URLs are supported.', 'error');
+    const message = 'Only HTTP and HTTPS URLs are supported.';
+    log(message, 'error');
+    showFeedback(message, 'error');
+    setStatusBanner(message, 'error');
     input.focus();
     return;
   }
@@ -72,14 +233,27 @@ form.addEventListener('submit', async (event) => {
   buttonText.textContent = 'Scanning…';
   progressPanel.hidden = false;
   updateProgress(0, 'crawl', 'active', 'Collecting sitemap...');
+  setStatusBanner('Working through your sitemap…', 'info');
+  showFeedback("Hang tight—we're crawling your pages.", 'info');
 
   try {
     log(`Starting scan for ${sitemapUrl.href}`);
-    
+
     // Phase 1: Collect all page URLs from sitemap
     const pageUrls = await collectSitemapUrls(sitemapUrl.href);
     if (!pageUrls.length) {
-      log('No page URLs were discovered in the sitemap. Nothing to scan.', 'warn');
+      const message = 'No page URLs were discovered in the sitemap. Nothing to scan.';
+      log(message, 'warn');
+      showFeedback('We could not find any page URLs in that sitemap.', 'warn');
+      setStatusBanner('We could not find any page URLs in that sitemap.', 'warn');
+      updateResultsEmptyState(
+        'No pages discovered',
+        'Double-check that your sitemap lists <loc> entries or try another sitemap.',
+        'warn',
+      );
+      resultsPanel.hidden = false;
+      progressPanel.hidden = true;
+      resetProgress();
       return;
     }
     log(`Discovered ${pageUrls.length} page URL${pageUrls.length === 1 ? '' : 's'}.`);
@@ -168,10 +342,36 @@ form.addEventListener('submit', async (event) => {
     updateProgress(100, 'build', 'completed', '✓ Complete');
     currentResults = pages;
     
-    renderSummary(pages, allLinksText.size);
+    const summaryData = renderSummary(pages, allLinksText.size);
     renderResults(pages);
     log('Scan complete.');
-    
+    let feedbackMessage = 'Scan complete.';
+    let feedbackVariant = 'success';
+    if (summaryData.uniqueLinksCount === 0) {
+      feedbackMessage = 'Scan complete—no links were detected on the scanned pages.';
+      feedbackVariant = 'warn';
+    } else if (summaryData.brokenLinks) {
+      feedbackMessage = 'Scan complete—review the broken links highlighted below.';
+      feedbackVariant = 'warn';
+    } else {
+      feedbackMessage = 'Scan complete. Everything looks healthy!';
+      feedbackVariant = 'success';
+    }
+    showFeedback(feedbackMessage, feedbackVariant);
+    let bannerMessage;
+    let bannerVariant;
+    if (summaryData.uniqueLinksCount === 0) {
+      bannerMessage = 'Scan complete! No links were found on the scanned pages.';
+      bannerVariant = 'info';
+    } else if (summaryData.brokenLinks) {
+      bannerMessage = `Scan complete! Found ${summaryData.brokenLinks} broken link${summaryData.brokenLinks === 1 ? '' : 's'}.`;
+      bannerVariant = 'warn';
+    } else {
+      bannerMessage = 'Scan complete! No broken links were found.';
+      bannerVariant = 'success';
+    }
+    setStatusBanner(bannerMessage, bannerVariant);
+
     // Hide progress after 2 seconds
     setTimeout(() => {
       progressPanel.hidden = true;
@@ -181,6 +381,13 @@ form.addEventListener('submit', async (event) => {
     log(error.message || 'Scan failed.', 'error');
     progressPanel.hidden = true;
     resetProgress();
+    setStatusBanner(`Scan failed: ${error.message || 'Unknown error.'}`, 'error');
+    updateResultsEmptyState(
+      'Scan failed',
+      'Check the activity log below for more details and try again when you are ready.',
+      'warn',
+    );
+    resultsPanel.hidden = false;
   } finally {
     scanButton.disabled = false;
     buttonText.textContent = 'Start Scan';
@@ -198,12 +405,11 @@ function resetUI() {
   currentResults = [];
   showBrokenOnly = false;
   if (searchInput) searchInput.value = '';
-  if (filterButton) filterButton.innerHTML = `
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M6 10.5a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z"/>
-    </svg>
-    Show Broken Only
-  `;
+  updateFilterButton();
+  clearFeedback();
+  clearStatusBanner();
+  updateResultsEmptyState(defaultEmptyState.title, defaultEmptyState.message, defaultEmptyState.variant, { show: false });
+  hideResultsEmptyState();
   resetProgress();
 }
 
@@ -249,12 +455,14 @@ function resetProgress() {
 function filterResults(searchTerm = '') {
   const sections = resultsEl.querySelectorAll('section');
   const term = searchTerm.toLowerCase();
-  
+
+  let visibleSections = 0;
+
   sections.forEach(section => {
     const pageUrl = section.querySelector('h3 a')?.textContent || '';
     const rows = section.querySelectorAll('tbody tr');
     let visibleRows = 0;
-    
+
     rows.forEach(row => {
       const linkUrl = row.querySelector('td:first-child a')?.textContent || '';
       const isBroken = row.classList.contains('broken');
@@ -269,9 +477,47 @@ function filterResults(searchTerm = '') {
         row.style.display = 'none';
       }
     });
-    
-    section.style.display = visibleRows > 0 ? '' : 'none';
+
+    if (visibleRows > 0) {
+      section.style.display = '';
+      visibleSections++;
+    } else {
+      section.style.display = 'none';
+    }
   });
+
+  if (!sections.length) {
+    updateResultsEmptyState(
+      'No links detected',
+      'The crawler did not find any links on the scanned pages.',
+      'info',
+    );
+    return;
+  }
+
+  if (!visibleSections) {
+    if (showBrokenOnly) {
+      updateResultsEmptyState(
+        'No broken links 🎉',
+        'We could not find any broken links. Toggle “Show All Links” to review healthy ones.',
+        'success',
+      );
+    } else if (term) {
+      updateResultsEmptyState(
+        'No matches for your search',
+        'Try searching for a different URL, anchor text, or keyword.',
+        'warn',
+      );
+    } else {
+      updateResultsEmptyState(
+        defaultEmptyState.title,
+        defaultEmptyState.message,
+        defaultEmptyState.variant,
+      );
+    }
+  } else {
+    hideResultsEmptyState();
+  }
 }
 
 function exportToJSON() {
@@ -589,10 +835,12 @@ function renderSummary(pages, uniqueLinksCount) {
     page.links.filter((link) => !link.ok).forEach(link => brokenLinksSet.add(link.href));
   }
 
+  const brokenLinksCount = brokenLinksSet.size;
+
   const summaryItems = [
     { label: 'Pages Scanned', value: pageCount },
     { label: 'Unique Links Checked', value: uniqueLinksCount },
-    { label: 'Broken Links', value: brokenLinksSet.size },
+    { label: 'Broken Links', value: brokenLinksCount },
   ];
 
   summaryEl.innerHTML = summaryItems
@@ -607,12 +855,25 @@ function renderSummary(pages, uniqueLinksCount) {
     .join('');
 
   summaryPanel.hidden = false;
+
+  return {
+    pageCount,
+    uniqueLinksCount,
+    brokenLinks: brokenLinksCount,
+  };
 }
 
 function renderResults(pages) {
   resultsEl.innerHTML = '';
 
+  let pagesWithLinks = 0;
+
   for (const page of pages) {
+    if (!page.links.length) {
+      continue;
+    }
+
+    pagesWithLinks++;
     const section = document.createElement('section');
     const heading = document.createElement('h3');
     const link = document.createElement('a');
@@ -621,6 +882,19 @@ function renderResults(pages) {
     link.rel = 'noopener';
     link.textContent = page.page;
     heading.append(link);
+
+    const brokenCount = page.links.filter(linkResult => !linkResult.ok).length;
+    const badge = document.createElement('span');
+    badge.className = 'page-count-badge';
+    badge.textContent = `${page.links.length} link${page.links.length === 1 ? '' : 's'}`;
+    if (brokenCount > 0) {
+      badge.dataset.variant = 'alert';
+      badge.textContent += ` • ${brokenCount} broken`;
+    } else {
+      badge.dataset.variant = 'ok';
+      badge.textContent += ' • All healthy';
+    }
+    heading.append(badge);
     section.append(heading);
 
     const table = document.createElement('table');
@@ -672,6 +946,18 @@ function renderResults(pages) {
   }
 
   resultsPanel.hidden = false;
+
+  if (!pagesWithLinks) {
+    updateResultsEmptyState(
+      'No links detected',
+      'The crawler did not find any links on the scanned pages.',
+      'info',
+    );
+    return;
+  }
+
+  hideResultsEmptyState();
+  filterResults(searchInput?.value || '');
 }
 
 function simplifyError(message) {
